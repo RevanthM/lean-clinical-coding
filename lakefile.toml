@@ -1,0 +1,10 @@
+name = "lean-clinical-coding"
+version = "0.1.0"
+defaultTargets = ["ClinicalCoding", "clinical_demo"]
+
+[[lean_lib]]
+name = "ClinicalCoding"
+
+[[lean_exe]]
+name = "clinical_demo"
+root = "Main"

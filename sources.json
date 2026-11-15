@@ -1,0 +1,15 @@
+{
+  "project": "lean-clinical-coding",
+  "reviewedOn": "2026-11-15",
+  "policyId": "FY2027-fixture-v1",
+  "status": "Synthetic research fixture inspired by selected outpatient guidance; not an official code-set implementation",
+  "effectiveStart": "2026-10-01",
+  "effectiveEndExclusive": "2027-10-01",
+  "sources": [
+    {"title": "FY 2027 ICD-10-CM Official Guidelines for Coding and Reporting", "url": "https://www.cms.gov/files/document/fy-2027-icd-10-cm-coding-guidelines.pdf", "usedFor": "Effective window, Section IV outpatient uncertain diagnosis and documented symptoms guidance; paraphrased, not redistributed"},
+    {"title": "CMS ICD-10 code files", "url": "https://www.cms.gov/medicare/coding-billing/icd-10-codes", "usedFor": "Authoritative code-set publication entry point; no corpus imported"},
+    {"title": "CDC ICD-10-CM lookup", "url": "https://icd10cmtool.cdc.gov/", "usedFor": "Reference for illustrative I10 and R50.9 identifiers; full tabular rules not implemented"},
+    {"title": "Formalizing all US case law in Lean", "url": "https://lexifina.com/blog/formalizing-all-us-case-law-in-lean", "usedFor": "Evidence-certificate architecture inspiration; no source code, corpus, or benchmark results reused"}
+  ],
+  "fixtures": {"origin": "Authored by Matha Labs", "patientData": false, "conceptCount": 2, "regressionCount": 23, "sourceCorpusImported": false, "offsetUnit": "Unicode scalar values"}
+}
