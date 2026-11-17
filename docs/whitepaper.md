@@ -1,77 +1,212 @@
-# Checking clinical coding evidence in Lean
+# Evidence-bound clinical coding: a small executable Lean model
 
-**Matha Labs | Research prototype v0.1.0 | November 15, 2026**
+Twelve proved properties of a two-concept, reviewed-input checker, with a protocol for evaluating the semantic boundary
+
+**Revanth Matha · Matha Labs | Whitepaper 2.0 | Revised 16 November 2026**
+
+First published 15 November 2026 at 3:12:52 PM PST. Evaluated code: `f451edbe9054796d663b207d47e586f0b9c20346`.
 
 ## Abstract
 
-This paper presents an executable certificate checker for a deliberately small clinical coding problem. A proposal names a reviewed note, a concept, an exact quotation, and a policy revision. A pure Lean function accepts the proposal only when its explicit conditions hold. Twelve named theorems establish structural properties of this function, and twenty-three synthetic regression fixtures exercise accepted examples and rejected mutations. The supported identifiers are R50.9 and I10, represented by two restricted synthetic phrases. The result demonstrates how evidence checking can constrain a future generative system. It does not demonstrate clinical extraction accuracy, complete ICD-10-CM compliance, or patient-level coding performance.
+Clinical coding combines language interpretation, clinical documentation, classification conventions, and encounter-specific rules. Formal verification can constrain a decision procedure, but it cannot establish the accuracy of an unexamined extraction. This paper studies that boundary through a small Lean 4 implementation. The input is a clinician-reviewed note with explicit concept, certainty, setting, and temporality annotations. A separate certificate proposes a concept and an exact quotation at a Unicode-scalar offset. The checker validates source identity, a fixed policy revision, the reviewed annotations, calendar and applicability dates, span bounds, and a restricted phrase mapping before returning an illustrative identifier. The implementation contains two supported fixture concepts, twelve named theorems, and twenty-three synthetic regression cases. Re-execution of the pinned source passes all cases. The proofs establish structural requirements for accepted certificates and refusal behavior for several unsupported states; they do not establish clinical entailment, complete ICD-10-CM compliance, or extraction accuracy. Current CDC and CMS publications provide the policy context, while the implementation remains the authored FY2027-fixture-v1 bundle rather than a complete official release. We analyze an adversarial counterexample in which a matching word can coexist with an incorrect semantic annotation, compare the checker with contextual NLP and conventional rule engines, and specify a prospective evaluation separating extraction, abstention, policy translation, and coding outcomes. The proposed next milestone is an independently adjudicated annotation and policy test set, with immutable source versions and auditable review decisions.
 
-## 1. Research question
+Keywords: Lean 4, ICD-10-CM, clinical coding, evidence certificates, assertion classification, selective prediction, formal verification
 
-A language model can propose a code with fluent reasoning while omitting the source sentence, confusing a suspected condition with an established one, or applying a rule from the wrong period. A useful research question is whether a small, independently executable checker can make some of those failures impossible at the acceptance boundary. The answer depends on precisely naming what the checker receives and what it proves.
+## Contributions
 
-Our unit of work is a coding certificate, not a free-form explanation. The proposal must identify the source note and policy revision and provide a quotation at an explicit offset. The final public function produces either an illustrative code or no code. Human review remains necessary wherever interpretation or policy coverage is incomplete. A deterministic rejection is itself a reproducible result; a system need not manufacture a code to appear successful.
+1. An executable certificate gate binding a proposal to a reviewed note, exact text span, restricted concept, setting, date, and fixture revision.
+2. Twelve named Lean theorems establishing acceptance preconditions and refusal properties, without project-specific axioms or admitted proofs.
+3. Twenty-three reproducible synthetic cases covering the two supported concepts and important mutations; an explicit account of what these cases cannot measure.
+4. A source-grounded analysis of the remaining semantic boundary and a specified future evaluation protocol; this protocol is proposed, not an executed benchmark.
 
-## 2. Relationship to evidence-based formalization
+## 1. What would a useful checked coding decision establish?
 
-Lexifina describes a larger system in which extracted legal claims are accompanied by textual evidence and checked against formal authority rules [4]. We adopt the general separation between a fallible proposal mechanism and a deterministic checker. We have not reproduced that system, imported its legal corpus, independently verified its reported evaluation, or transferred its benchmark numbers to healthcare.
+A useful coding system must answer several different questions. What does the record say? Does a finding apply to this patient and encounter? Which classification instruction governs it? Does the proposed identifier satisfy that instruction at the relevant date? Conflating these questions makes it difficult to tell whether a wrong output originated in extraction, documentation, terminology, or policy. CDC describes ICD-10-CM as a diagnosis and morbidity classification, while its publication process supplies versioned files that a coding implementation must select explicitly. Neither fact implies that a language model's plausible diagnosis is documented in the record. [2,3]
 
-The clinical setting introduces a distinct semantic boundary. A quotation being present does not establish that the condition applies to the patient, belongs to the current encounter, or has the intended certainty. For example, the word “Fever” can occur inside a denial, a family history, or a hypothetical instruction. Therefore the checker consumes a `ReviewedNote` whose semantic annotations have already been reviewed. The proposal cannot override these annotations. This restriction makes the initial experiment smaller and its claims clearer.
+The research question here is deliberately narrower: given reviewed semantic facts, can an independent executable checker prevent a proposed certificate from violating selected structural conditions? The artifact answers that question for two restricted examples. It provides a readable acceptance predicate, proofs about that predicate, and replayable mutations. It is useful as a boundary experiment because every accepted output has identifiable assumptions. It is not evidence that the surrounding clinical interpretation has been solved. The code and fixture list are the primary evidence for implementation claims throughout this paper. [9,10]
 
-## 3. Policy context and scope
+The architecture follows the general evidence-certificate idea illustrated by Lexifina: an extractor proposes information and a separate formal model constrains what may be accepted. The domains and evaluations are different. No legal corpus, benchmark result, or proof count transfers from that work to this clinical artifact. The substantive question is which facts should be trusted upstream, and which should become independently checkable obligations downstream. [11]
 
-The CMS and NCHS FY 2027 guidance applies from October 1, 2026 through September 30, 2027. Its outpatient section distinguishes uncertain diagnoses from documented signs, symptoms, and other established reasons for the encounter [1]. We use that distinction to motivate an affirmed-only outpatient fixture. The official classification includes many additional conventions and instructions; this project implements only the listed fixture conditions.
+### Figure 1. The executed clinical certificate path
 
-The current model has two supported concepts: fever and essential hypertension. Their illustrative identifiers are R50.9 and I10. The strings `Fever` and `Essential hypertension` are intentionally restrictive fixture phrases. A real note saying the same thing differently will generally be rejected. The model does not implement the Alphabetic Index, full Tabular List, exclusions, combination codes, sequencing, laterality, encounter characters, or the highest-specificity decision across the complete record. The official publication and lookup services remain the references for real classification work [2, 3].
+![Figure 1. The executed clinical certificate path](figures/lean-clinical-coding-clinical-executed-pipeline.svg)
 
-## 4. Input and certificate model
+This is the implemented dataflow in the pinned source, not a deployed clinical workflow. The review step is an upstream assumption; no neural extractor or clinical adjudication service runs in the artifact. [9,10]
 
-`ReviewedNote` contains an identifier, text, encounter date, setting, clinician-review flag, reviewed concept, reviewed certainty, and current-encounter flag. Certainty is an explicit enumeration: affirmed, uncertain, or negated. Setting is outpatient or inpatient. Concept is fever, hypertension, or unsupported. These finite enumerations prevent arbitrary text from being silently treated as a supported diagnosis class.
 
-`Certificate` contains a note identifier, policy revision, proposed concept, character offset, and quotation. Offsets count Unicode scalar values, as represented by Lean's string-to-list operation. They do not count bytes or UTF-16 code units. An adapter that uses a different indexing convention must convert it explicitly. The checker requires a nonempty quotation and validates both the span boundary and the extracted text.
+## 2. Current classification context and the meaning of FY2027-fixture-v1
 
-Dates are represented as natural-number YYYYMMDD values. `validCalendarDate` validates month lengths, including Gregorian leap-year rules, before the effective-window comparison can succeed. The period is half-open: the first day is accepted, and the next period's first day is rejected. This treatment avoids an ambiguous inclusive upper bound.
+As checked on November 16, 2026, CDC's publication page identifies the October 1, 2026 FY 2027 ICD-10-CM release for services through September 30, 2027. CMS publishes the corresponding guideline and code-file entry points. This dates the authoritative context; it does not certify a third-party implementation. The local release string FY2027-fixture-v1 is authored by Matha Labs and denotes a small experiment. No official file corpus was imported into its executable mapping. The paper therefore does not claim complete current-code coverage merely because the dates align. [1,2,4]
 
-## 5. Executable acceptance rule
+The relevant outpatient guidance distinguishes uncertain diagnoses from the documented level of certainty available for an encounter. The fixture conservatively requires an affirmed reviewed concept. That restriction also applies to its symptom example; it is a modeling choice, not a complete restatement of outpatient rules. The official classification's conventions, specificity, exclusions, sequencing, and chapter-specific instructions remain outside the artifact. Its two identifiers must consequently be read as demonstration outputs, not a general recommendation to assign those codes whenever a phrase appears. [1]
 
-`Conditions` is the conjunction of fifteen explicit checks. Identity must match; the revision must equal `FY2027-fixture-v1`; the input must be clinician reviewed; the setting must be outpatient; the date must lie inside the fixture interval; the condition must affect the current encounter; certainty must be affirmed; the proposed and reviewed concepts must agree; the concept must be supported; the quotation must be nonempty, in bounds, present at the stated offset, and equal to the restricted phrase; and the date must be a valid calendar date.
+This distinction also prevents a subtle version error: a future policy update cannot be represented adequately by changing a date constant alone. A meaningful update would identify changed source instructions, affected concepts, modified proof obligations, and new regression cases. The current half-open date interval is one applicability guard for one fixed bundle. It is not a legal effective-date engine and does not resolve midyear releases, payer adoption differences, or documentation corrections. [2,4]
 
-`verify` decides this proposition and returns a Boolean. `result` returns a code only after `verify` succeeds. All inputs and policy constants are ordinary data. There is no network call, hidden prompt, mutable database, temperature setting, or language-model invocation in this computation. Holding the reviewed input and certificate fixed therefore holds the result fixed. This property does not imply that different extractors will produce the same reviewed input.
 
-## 6. Proof inventory
+## 3. Evidence representation and its trust boundary
 
-The twelve named theorems are declared in `ClinicalCoding/Model.lean` and checked during `lake build`:
+ReviewedNote contains an ID, complete text string, encounter date, setting, clinicianReviewed Boolean, reviewed concept, reviewed certainty, and currentEncounter Boolean. Concept has fever, hypertension, and unsupported constructors. Certainty has affirmed, uncertain, and negated constructors. A certificate cannot replace certainty with its own preferred label: its proposed concept must agree with the reviewed note's concept. This constrains the proposal while leaving the correctness of the reviewed record itself outside the theorem. [9]
 
-- `verification_iff` establishes equivalence between successful Boolean verification and the stated acceptance proposition.
-- `accepted_requires_review` and `accepted_is_outpatient` establish the review and setting requirements for every accepted certificate.
-- `accepted_is_affirmed` and `accepted_concept_matches` bind the accepted proposal to the reviewed semantic annotations.
-- `accepted_quote_exists` and `accepted_quote_in_bounds` establish the exact span and boundary conditions.
-- `accepted_date_in_window` establishes both effective-date inequalities.
-- `uncertain_refused`, `negated_refused`, and `unsupported_refused` establish rejection for those input classes.
-- `rejection_has_no_code` establishes that failed verification cannot emit an identifier through `result`.
+Certificate contains a note ID, release string, concept, offset, and quotation. Offsets count Unicode scalar values through String.toList, not UTF-8 bytes or UTF-16 code units. That detail matters when integrating an extractor or browser editor. A visually identical quotation can have different indexing or normalization behavior; a future adapter should declare its encoding and retain the original source bytes. The current code neither normalizes equivalent Unicode sequences nor tests a broad multilingual corpus. Its exact equality semantics are intentional and restrictive. [9,10]
 
-These are properties of the implemented model. None proves that the reviewed annotations are medically correct or that the policy is complete. The source contains no proof placeholders, custom axioms, admitted results, or unsafe declarations. The project uses Lean's bundled standard library and pins Lean to version 4.35.0.
+The clinicianReviewed field is an attestation supplied as data. It is not a digital signature, role check, credential validation, or evidence that an authorized person performed a documented review. Similarly, note-ID agreement is not proof of provenance authenticity. A future operational design should bind review decisions to authenticated source versions and reviewer identities, while keeping those identifiers outside public artifacts where required. That extension would strengthen provenance but still would not make an incorrect interpretation true.
 
-## 7. Synthetic evaluation
+### Figure 2. Interpretation remains outside the checked kernel
 
-The executable contains twenty-three named fixtures. Two affirmative cases cover the supported concepts, and expected-output checks confirm their identifiers. Rejected mutations cover uncertainty, negation, unsupported concept substitution, wrong source identity, modified quotation, an out-of-bounds offset, an empty quotation, missing review, inpatient setting, a historical condition, the wrong revision, and dates outside the fixture period. Boundary fixtures test the first and last effective dates, invalid February dates, and leap-day validation.
+![Figure 2. Interpretation remains outside the checked kernel](figures/lean-clinical-coding-clinical-trust-boundary.svg)
 
-The complete list is also evaluated in a compile-time `example` using `by decide`. The executable prints one result per fixture and exits with an error if any fixture fails. At publication preparation, the pinned toolchain built successfully and the executable reported 23/23 passing synthetic fixtures. These examples are authored regression cases, not a random sample, external benchmark, sensitivity estimate, or clinical validation cohort. Their purpose is to document specific acceptance and rejection behavior.
+The transition from a record to reviewed annotations is the principal unresolved semantic boundary. The figure distinguishes an assumed annotation process from the implemented certificate checks. [5,6,9]
 
-## 8. Trust boundary and unresolved work
 
-The trusted inputs are the reviewed note text and its semantic annotations, the curated phrase mapping, and the selected policy revision. The Boolean review flag records an upstream assertion; it does not authenticate a clinician or verify a signature. Source identity is a data equality check, not a cryptographic provenance guarantee. The code makes these boundaries visible rather than solving them implicitly.
+## 4. Formal acceptance predicate and executable behavior
 
-An end-to-end system would need authenticated record ingestion, independently reviewed terminology and policy updates, appropriately governed patient-data handling, and a measured extraction stage. It would also need a richer abstention result that explains which checks failed. This release returns `none` on every rejection, so callers cannot yet distinguish all failure reasons from the return value alone. They can inspect each explicit condition during development.
+Conditions is a conjunction of fifteen obligations. The certificate ID must match the note, its release must equal the fixture revision, and review and outpatient-setting requirements must hold. The date must satisfy both interval inequalities and a calendar-validity check. The condition must belong to the current encounter and be affirmed. The proposed concept must match the reviewed concept and be supported. Finally the quote must be nonempty, its end position must remain inside the text, extraction at the supplied offset must equal the quote, and the quote must equal the reviewed concept's canonical phrase. [9]
 
-## 9. Next research steps
+verify decides this proposition as a Boolean. result returns the mapping only when verification succeeds; otherwise it returns none. This makes the acceptance gate inspectable and replayable for fixed inputs. none is deliberately coarse. It does not distinguish a missing review from an unsupported setting or bad span, and callers must not reinterpret it as an empty diagnosis or clinical absence. A typed rejection reason would be a useful extension, but it is not implemented by the existing return type.
 
-The next useful experiment is a reviewed annotation set with adjudicated labels for certainty, temporality, patient attribution, and exact spans. Evaluation should measure extraction errors separately from checker rejection, report abstention coverage, and preserve a held-out set. Additional concepts should be introduced only with their classification dependencies, rather than by enlarging a name-to-code dictionary. A versioned policy registry and independently implemented reference checker would support disagreement analysis. Those are proposed extensions; they have not been implemented or evaluated here.
+The calendar validator checks Gregorian month lengths and leap years for the natural-number YYYYMMDD representation. The interval begins at 20261001 and excludes 20271001. Validity of this arithmetic prevents impossible dates from slipping through an integer comparison. It does not establish that the date belongs to the right clinical event, resolve service-date versus discharge-date selection generally, or authenticate a corrected record. Those are distinct factual and policy obligations. [1,9]
+
+```text
+verify(n,c) = decide(Conditions(n,c)); result(n,c) = if verify(n,c) then code(c.concept) else none
+```
+
+n is the reviewed note and c the proposed certificate. Conditions is the exact fifteen-part conjunction in the pinned source; code is the restricted two-concept mapping. This formula states executable behavior, not a theorem of medical entailment.
+
+
+## 5. A matching quotation can still be semantically wrong
+
+Consider the original synthetic note Fever. Its affirmed reviewed concept and quote at offset zero satisfy the fixture. Now consider a hypothetical note No Fever with an incorrectly affirmed fever annotation and a quote Fever at scalar offset three. The quote is present, in bounds, and equal to the canonical phrase. The structural gate can accept those mutually consistent but semantically incorrect inputs if the remaining fields are valid. This counterexample is an analysis of the predicate, not an added regression case or evidence about a model's observed error rate. [9]
+
+The lesson is precise: accepted_is_affirmed proves the value of n.certainty, not the truth of an affirmative statement in arbitrary clinical prose. accepted_quote_exists proves string equality at a location, not that the surrounding sentence supports the intended finding. Negated and uncertain input labels are refused, but that guarantee depends on upstream annotation being correct. A paper that calls these proofs verified diagnosis inference would overstate the implementation.
+
+Clinical contextualization is a separate research problem. ConText explicitly studies negation, experiencer, and temporal properties; the i2b2/VA challenge separates concept extraction, assertion classification, and relation classification. These primary studies motivate decomposed evaluation rather than a single undifferentiated coding score. They are methodological references, not claims that their historical performance predicts this prototype's behavior or that their data can be reused without access review. [5,6]
+
+
+## 6. Exact theorem inventory and logical interpretation
+
+The pinned module contains twelve named theorems. The table gives their actual statements in readable notation, retaining the distinction between assumptions about reviewed input and conclusions about program behavior. Lean checks the proofs against their statements. Such checking does not validate a source translation or establish that the statements cover every relevant failure. [8,9]
+
+The project contains no authored axiom, unsafe declaration, admitted proof, or proof placeholder. This is not a claim of independence from Lean's ordinary logical foundations, compiler, runtime, or hardware. The build pins Lean 4.35.0 and uses its bundled standard library. Reproducibility should preserve the exact source commit and toolchain rather than treating a theorem count as a substitute for a model review.
+
+### Table 1. Twelve named statements in ClinicalCoding/Model.lean
+
+| Named theorem | Statement under the displayed assumptions | Interpretation |
+| --- | --- | --- |
+| verification_iff | verify(n,c)=true iff Conditions(n,c) | Boolean acceptance matches the stated predicate. |
+| accepted_requires_review | verify(n,c)=true implies n.clinicianReviewed=true | Requires an input attestation; does not authenticate review. |
+| accepted_is_outpatient | verify(n,c)=true implies n.setting=outpatient | The accepted input uses the represented setting. |
+| accepted_is_affirmed | verify(n,c)=true implies n.certainty=affirmed | Constrains the annotation, not prose semantics. |
+| accepted_concept_matches | verify(n,c)=true implies c.concept=n.concept | Candidate agrees with reviewed concept. |
+| accepted_quote_exists | verify(n,c)=true implies span(n.text,c.offset,c.quotation.length)=c.quotation | Exact source-text equality. |
+| accepted_date_in_window | verify(n,c)=true implies 20261001<=n.encounterDate<20271001 | Both fixture-date bounds hold. |
+| uncertain_refused | n.certainty=uncertain implies verify(n,c)=false | Refuses the represented uncertain state. |
+| negated_refused | n.certainty=negated implies verify(n,c)=false | Refuses the represented negated state. |
+| rejection_has_no_code | verify(n,c)=false implies result(n,c)=none | The guarded wrapper emits no code on rejection. |
+| accepted_quote_in_bounds | verify(n,c)=true implies c.offset+c.quotation.length<=n.text.length | The accepted span ends inside the text. |
+| unsupported_refused | c.concept=unsupported implies verify(n,c)=false | Refuses the explicit unsupported constructor. |
+
+Exact names and implications are transcribed from the pinned model. Abbreviations n and c denote ReviewedNote and Certificate. No theorem in this table establishes clinical correctness. [9]
+
+
+## 7. Worked accepted and refused cases
+
+The baseline case is fully synthetic: ID synthetic-1, text Fever, date 20261115, outpatient setting, affirmed fever, current encounter, and review true. A certificate with matching ID and revision quotes Fever at offset zero and proposes fever. verify returns true and result returns some R50.9. The second example uses the complete text Essential hypertension and the matching reviewed concept; it returns some I10. These are the only supported concepts and exact phrases. [10]
+
+Mutating one part clarifies the boundary. Reusing the fever record while proposing hypertension fails concept agreement. Changing reviewed certainty to negated or uncertain fails the affirmation requirement. Changing only the certificate quote's capitalization fails exact text equality and the canonical mapping. Inpatient input is routed to none because no inpatient policy is represented, not because the condition is clinically absent. A historical reviewed condition similarly fails this fixture's current-encounter requirement.
+
+Boundary tests exercise the first and last valid dates and reject the exclusive end date. February 30 is invalid even when numerically inside the interval. A separate leap-day utility test checks calendar behavior outside the policy period; it is not an accepted encounter outside the applicability window. Keeping utility tests distinct from clinical cases avoids counting every passing Boolean as a successful coding decision.
+
+### Table 2. Selected executed synthetic cases
+
+| Case or mutation | Observed behavior | Reason and limit |
+| --- | --- | --- |
+| Affirmed Fever at offset 0 | some R50.9 | Supported reviewed phrase; no diagnostic inference. |
+| Reviewed Essential hypertension | some I10 | Second restricted demonstration mapping. |
+| Fever proposed as hypertension | Verification false | Reviewed concept and proposal disagree. |
+| Negated reviewed certainty | Verification false | Refusal depends on correctness of supplied annotation. |
+| Quote fever instead of Fever | Verification false | Equality is case-sensitive; no semantic normalization. |
+| Encounter date 20271001 | Verification false | Exclusive end of fixed fixture window. |
+| Leap date 20280229 | Calendar utility true | Does not imply policy acceptance in 2028. |
+
+These rows describe members of the existing twenty-three-case fixture list. They are not additional measurements or a sample of real records. [10]
+
+
+## 8. What the present evaluation establishes
+
+Re-executing the pinned executable yields twenty-three passing named checks. The list covers affirmative examples, proposed-concept substitution, wrong IDs, quote changes, empty and out-of-range spans, missing review, unsupported settings and concepts, historical flags, policy dates and versions, expected identifiers, and calendar edge cases. The same list is evaluated by a compile-time example. A source scan checks for selected proof holes and declarations. These layers provide regression evidence against specific mistakes in this small artifact. [9,10]
+
+The denominator is twenty-three authored assertions, not twenty-three patients or randomly selected encounters. Several cases test a utility or an expected rejection rather than successful coding. There is no independent clinical label set, held-out institution, inter-rater agreement statistic, model comparison, calibration curve, throughput result, or measured reduction in coding errors. A passing fixture suite therefore supports implementation consistency, not an estimate of clinical effectiveness.
+
+The suite also does not lock theorem statements against weakening, perform mutation testing of every acceptance conjunct, or compare an independently implemented policy. The number of proved statements alone says little about those omissions. The next experimental release should test whether meaningful changes to each gate are detected and whether another author can reconstruct the intended predicate from the source specification without reading the Lean implementation.
+
+
+## 9. Comparison with other coding architectures
+
+A direct generative approach can map note text to codes and explanatory prose, but evaluating it requires independent labels for both extraction and coding decisions. A constrained vocabulary limits output form without guaranteeing that the chosen label is documented. Retrieval can improve source visibility while still selecting the wrong encounter, rule, or policy version. The certificate gate addresses a different problem: it specifies what must hold after reviewed facts and a candidate have already been supplied.
+
+Contextual rule systems such as ConText expose linguistic triggers and scope decisions. They can be useful extraction baselines because their intermediate annotations are inspectable. A conventional program or database rule engine can implement the same conjunction as this artifact and should be included in a comparison. Formalization offers quantified statements about the encoded function; it does not automatically improve the quality of the underlying linguistic or clinical model. [5,8]
+
+A hybrid experiment should measure the incremental value of each boundary. Compare identical proposals under an unchecked output path, an ordinary independently coded validator, and the Lean checker. If the two validators disagree, investigate implementation or specification drift before treating either as ground truth. Human adjudication remains necessary for the semantic labels and complete classification decisions. The i2b2 task decomposition offers a useful precedent for measuring those stages separately, without implying that its label scheme is sufficient for full coding. [6]
+
+
+## 10. A concrete next evaluation protocol
+
+The proposed study begins with authorized, independently adjudicated records and a preregistered scope. Select a supported outpatient task, define the unit of annotation, and create labels for source spans, patient attribution, certainty, current relevance, proposed concept, and applicable classification dependencies. Use at least two qualified annotators with a documented disagreement process. Partition by patient and institution before tuning, retain a temporal holdout, and keep duplicate or templated text families from leaking across splits. These are proposed design requirements, not completed data collection. [6]
+
+Freeze three comparison arms: a contextual-rule baseline, a trained or prompted extractor, and a reviewed-input upper-bound experiment. Feed their proposals to both an ordinary reference validator and Lean. Report span precision and recall, assertion confusion matrices, semantic false acceptance among emitted candidates, coding agreement against adjudicated full-record decisions, and abstention coverage. Provide confidence intervals clustered at the patient level where repeated encounters occur. Never count refusal alone as correct clinical coding; report the review burden it creates.
+
+A separate adversarial suite should include negation outside the quoted span, family-history statements, hypothetical instructions, copied-forward diagnoses, contradictory sections, alternate Unicode forms, invalid offsets, and source/version substitutions. Require all supported-gate mutation tests to be detected and publish disagreement examples in privacy-safe form. Establish stopping criteria before evaluation: unsupported classifications return review, unexplained validator disagreements block a broader scope claim, and material source changes trigger revalidation. The current paper supplies the protocol and executable foundation, not its future results.
+
+### Figure 3. Proposed evaluation with separate error accounting
+
+![Figure 3. Proposed evaluation with separate error accounting](figures/lean-clinical-coding-clinical-proposed-evaluation.svg)
+
+This is a prospective study plan. No record cohort, learned extractor comparison, confidence interval, or benchmark score has been produced by the pinned artifact. [5,6,9,10]
+
+
+## 11. Source drift, review governance, and patient-data boundaries
+
+A maintainable coding model needs immutable source snapshots, effective intervals, transformation records, and reviewer decisions. CDC's release page and CMS's publication entry point should be treated as discovery sources rather than as stable content hashes. Record downloaded artifact digests, retrieval times, applicable sections, and which concepts depend on each instruction. A change in a source file should create a reviewable policy revision; a passing historical replay must remain reproducible under its original bundle. The current implementation has an equality-checked release string and fixed dates, but not this registry or impact analysis. [2,4]
+
+Review governance should distinguish authoring a rule, approving its clinical interpretation, and approving its operational use. Proposed audit records would identify the source version, reviewer role, uncertainty, unresolved exceptions, and reason for each scope expansion. A model-generated certificate should never be able to elevate its own review status. The artifact already prevents its certificate from changing the note's annotation fields, but its input constructor remains available to application code; access-control and provenance guarantees require an enclosing system.
+
+The repository contains only synthetic notes. Future real-record work must establish a lawful access basis and suitable privacy controls before ingestion. HHS describes Expert Determination and Safe Harbor as de-identification methods; neither a synthetic label nor removal of obvious names proves that a real record satisfies the relevant requirements. Review the complete release surface, including quotations, exception logs, screenshots, and test failures. Keep identifiable records and reviewer identities out of a public research repository. This paper makes no claim of an implemented HIPAA-compliant service. [7]
+
+
+## 12. Research boundary and credible expansion milestones
+
+The central result is a small checked interface, not automated healthcare adjudication. It cannot diagnose a disease from symptoms, determine whether a provider established a condition, search an entire record, select a complete ICD-10-CM code, sequence multiple diagnoses, or infer payment. In particular, a valid clinical identifier does not establish covered service, medical necessity, contract applicability, or reimbursement amount. CMS explicitly distinguishes coverage decisions from coding and payment determinations; that separation should survive any future integration with the companion reimbursement work. [12]
+
+A credible expansion sequence is to first strengthen evidence provenance and typed failure reasons, then validate the semantic annotation boundary, then implement a deliberately chosen classification slice with its dependencies. Each slice should add official-source tests, independent translation review, complete counterexamples for unsupported contexts, and an evaluation on records that were not used to formulate the rules. Shipping a larger dictionary before those steps would increase nominal coverage without demonstrating that more accepted decisions are justified.
+
+A trained proposer can remain probabilistic while the final checker remains deterministic for fixed reviewed input and policy. That is an engineering separation of responsibilities, not a promise of deterministically correct real-world medicine. The value of the artifact lies in exposing those responsibilities precisely enough to test them. Until the proposed evaluation and broader classification work are executed, claims should remain limited to the two fixture concepts, twelve named statements, and twenty-three reproducible synthetic checks at the cited commit.
+
+## Scope
+
+The pinned code checks two illustrative concepts against reviewed structured notes using the exact phrases Fever and Essential hypertension. It neither imports the complete FY 2027 classification nor derives diagnoses from symptoms, and it does not determine reimbursement.
 
 ## References
 
-1. CMS and NCHS. FY 2027 ICD-10-CM Official Guidelines for Coding and Reporting. https://www.cms.gov/files/document/fy-2027-icd-10-cm-coding-guidelines.pdf
-2. CMS. ICD-10 code publications. https://www.cms.gov/medicare/coding-billing/icd-10-codes
-3. CDC. ICD-10-CM lookup tool. https://icd10cmtool.cdc.gov/
-4. Lexifina. Formalizing all US case law in Lean. November 13, 2026. https://lexifina.com/blog/formalizing-all-us-case-law-in-lean
-5. Lean. Installation and language resources. https://lean-lang.org/install/
+[1] [FY 2027 ICD-10-CM Official Guidelines for Coding and Reporting](https://www.cms.gov/files/document/fy-2027-icd-10-cm-coding-guidelines.pdf). Updated October 1, 2026; Section IV outpatient guidance, including uncertain diagnoses; introduction on classification conventions and complete-record documentation. Context only; no complete translation is implemented. Accessed 2026-11-16.
+
+[2] [ICD-10-CM Files](https://www.cdc.gov/nchs/icd/icd-10-cm/files.html). CDC/NCHS publication page; FY 2027 October 1, 2026 release and service-date applicability through September 30, 2027. Accessed 2026-11-16.
+
+[3] [ICD-10-CM](https://www.cdc.gov/nchs/icd/icd-10-cm/index.html). CDC/NCHS description of the diagnosis and morbidity classification and official lookup entry point. Accessed 2026-11-16.
+
+[4] [ICD-10](https://www.cms.gov/medicare/coding-billing/icd-10-codes). CMS FY 2027 diagnosis-code file and guideline entry point; CM and PCS are separate published materials. Accessed 2026-11-16.
+
+[5] [ConText: An Algorithm for Determining Negation, Experiencer, and Temporal Status from Clinical Reports](https://pmc.ncbi.nlm.nih.gov/articles/PMC2757457/). Harkema et al., Journal of Biomedical Informatics, 2009. Primary study motivating separate contextual annotation tasks; no historical scores are transferred to this artifact. Accessed 2026-11-16.
+
+[6] [2010 i2b2/VA challenge on concepts, assertions, and relations in clinical text](https://pmc.ncbi.nlm.nih.gov/articles/PMC3168320/). Uzuner et al., JAMIA, 2011. Primary shared-task report separating concept extraction, assertion classification and relations; cited for evaluation design, not current dataset availability. Accessed 2026-11-16.
+
+[7] [Guidance Regarding Methods for De-identification of Protected Health Information in Accordance with the HIPAA Privacy Rule](https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html). HHS guidance on Expert Determination and Safe Harbor; prospective data-governance context, not a compliance assessment of this synthetic project. Accessed 2026-11-16.
+
+[8] [The Lean Language Reference: Propositions](https://lean-lang.org/doc/reference/4.35.0/The-Type-System/Propositions/). Version 4.35.0; propositions and proof terms. Logical checking must be distinguished from domain interpretation. Accessed 2026-11-16.
+
+[9] [Lean Clinical Coding: Model.lean at the pinned implementation](https://github.com/RevanthM/lean-clinical-coding/blob/f451edbe9054796d663b207d47e586f0b9c20346/ClinicalCoding/Model.lean). Primary implementation evidence: data types, Conditions, verifier, restricted mapping, calendar check and twelve named statements. Accessed 2026-11-16.
+
+[10] [Lean Clinical Coding: Main.lean at the pinned implementation](https://github.com/RevanthM/lean-clinical-coding/blob/f451edbe9054796d663b207d47e586f0b9c20346/Main.lean). Primary fixture evidence: twenty-three named synthetic checks and compile-time evaluation; no real-record cohort. Accessed 2026-11-16.
+
+[11] [Formalizing all US case law in Lean](https://lexifina.com/blog/formalizing-all-us-case-law-in-lean). Lexifina, November 13, 2026. Architectural inspiration for separating fallible extraction from a formal certificate checker; its corpus and results are not reproduced. Accessed 2026-11-16.
+
+[12] [Medicare Coverage of Items and Services](https://www.cms.gov/cms-guide-medical-technology-companies-and-other-interested-parties/coverage/medicare-coverage-items-and-services). CMS explanation distinguishing national coverage determinations from code assignment and payment amount; supports the clinical-versus-payment boundary. Accessed 2026-11-16.
